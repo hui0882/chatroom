@@ -1,0 +1,21 @@
+# 配置文件（含账号密码，不提交到版本库）
+config.json
+config.*.json
+
+# Go 编译产物
+/chatroom
+*.exe
+
+# 日志
+*.log
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
