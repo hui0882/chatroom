@@ -1,7 +1,7 @@
 # RESTful HTTP API 设计
 
-> **文档版本**：v0.3.0  
-> **最后更新**：2026-04-16  
+> **文档版本**：v0.3.1  
+> **最后更新**：2026-04-21  
 > **当前实现状态**：✅ 已实现 | 🔲 待实现
 
 ---
@@ -443,7 +443,7 @@ Authorization: 需要管理员
 GET /websocket_test
 ```
 
-建立连接后，服务器将每条收到的文本消息**倒序**后原路返回，用于验证 WebSocket 连通性。
+建立连接后，服务器将每条收到的文本消息按 **Unicode 码点（rune）倒序**后原路返回，用于验证 WebSocket 连通性。支持中文及任意 Unicode 字符。
 
 **示例：**
 ```
@@ -452,11 +452,47 @@ Server → "dlroW olleH"
 
 Client → "chatroom"
 Server → "moortahc"
+
+Client → "你好世界"
+Server → "界世好你"
 ```
 
 ---
 
-### 4.2 正式连接（需登录）✅
+### 4.2 流式输出测试（无需认证）✅
+
+```
+GET /websocket_stream
+```
+
+模拟 AI 流式输出场景。建立连接后：
+1. 客户端发送一条文本消息
+2. 服务器将文本按 Unicode 码点倒序
+3. 以 **20 字/秒**（每 50ms 一帧）的速度逐字符推送 `chunk` 帧
+4. 全部推送完毕后发送 `done` 帧，然后等待下一条消息
+
+**服务器推送帧格式：**
+```json
+// 内容帧（每个字符一帧）
+{ "type": "chunk", "content": "界" }
+
+// 结束帧
+{ "type": "done" }
+```
+
+**示例流程：**
+```
+Client → "你好世界"
+Server → {"type":"chunk","content":"界"}   // 第 0ms
+Server → {"type":"chunk","content":"世"}   // 第 50ms
+Server → {"type":"chunk","content":"好"}   // 第 100ms
+Server → {"type":"chunk","content":"你"}   // 第 150ms
+Server → {"type":"done"}                   // 第 200ms
+```
+
+---
+
+### 4.3 正式连接（需登录）✅
 
 ```
 GET /ws?session_id=<session_id>&device=pc

@@ -45,7 +45,7 @@ func TestEchoHandler(c *gin.Context) {
 		}
 
 		if msgType == websocket.TextMessage {
-			data = reverseBytes(data)
+			data = []byte(reverseRunes(string(data)))
 		}
 
 		if err := conn.WriteMessage(msgType, data); err != nil {
@@ -59,11 +59,11 @@ func TestEchoHandler(c *gin.Context) {
 	)
 }
 
-// reverseBytes 将字节切片中的字符倒序（按字节逆转，适用于 ASCII 文本）。
-func reverseBytes(b []byte) []byte {
-	out := make([]byte, len(b))
-	for i, v := range b {
-		out[len(b)-1-i] = v
+// reverseRunes 将字符串按 Unicode 码点（rune）倒序，正确处理中文等多字节字符。
+func reverseRunes(s string) string {
+	runes := []rune(s)
+	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+		runes[i], runes[j] = runes[j], runes[i]
 	}
-	return out
+	return string(runes)
 }

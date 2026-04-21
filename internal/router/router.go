@@ -29,6 +29,9 @@ func Setup(cfg *config.Config, app *server.AppContext) *gin.Engine {
 	// ── WebSocket 测试接口（无需认证，开发调试用）────────────
 	r.GET("/websocket_test", ws.TestEchoHandler)
 
+	// ── WebSocket 流式输出测试（无需认证，模拟 AI 流式回复）─
+	r.GET("/websocket_stream", ws.StreamEchoHandler)
+
 	// ── WebSocket 正式连接（需登录 Session）────────────────────
 	r.GET("/ws", app.WS.Serve)
 

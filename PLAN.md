@@ -2,8 +2,8 @@
 
 > **项目**：Chatroom —— 基于 Go 的高可用即时通讯系统  
 > **仓库**：github.com/hui0882/chatroom  
-> **文档版本**：v0.3.0  
-> **最后更新**：2026-04-16  
+> **文档版本**：v0.3.1  
+> **最后更新**：2026-04-21  
 > **负责人**：hanxiaoxiao
 
 ---
@@ -104,7 +104,8 @@ Phase 6  扩展能力      ░░░░░░░░░░░░  待开发
 | `internal/ws/hub.go` | Hub：`map[int64]map[string]*Client`（uid→device→Client），Register/Unregister/Inbound channel，Run() 事件循环，SendToUser，KickUser |
 | `internal/ws/client.go` | Client：ReadPump / WritePump goroutine 对，ping/pong 心跳（pongWait=60s，pingPeriod=54s），safeClose 保证连接关闭幂等 |
 | `internal/ws/handler.go` | SessionValidator 类型，Handler.Serve() 负责升级连接，BuildSessionValidator() 优先取 URL query → Header → Cookie |
-| `internal/ws/test_echo.go` | `GET /websocket_test` 无需认证，将收到的文本消息字节倒序后返回 |
+| `internal/ws/test_echo.go` | `GET /websocket_test` 无需认证，按 Unicode 码点（rune）倒序后返回，支持中文 ✅ |
+| `internal/ws/stream_echo.go` | `GET /websocket_stream` 无需认证，模拟 AI 流式输出：倒序文本后以 20 字/秒逐字符推送 JSON chunk 帧，结束后发 done 帧 ✅ |
 
 多设备策略：同 uid 不同 device 可并存；同 uid + 同 device 重连时关闭旧连接 Send 通道，触发旧连接 WritePump 优雅退出。
 
@@ -141,7 +142,8 @@ Phase 6  扩展能力      ░░░░░░░░░░░░  待开发
 
 ```
 GET  /health                              健康检查
-GET  /websocket_test                      WS 测试（无需认证，字节倒序回显）
+GET  /websocket_test                      WS 测试（无需认证，Unicode rune 倒序回显，支持中文）
+GET  /websocket_stream                    WS 流式测试（无需认证，模拟 AI 流式输出，20 字/秒）
 GET  /ws?session_id=<sid>&device=<type>  WS 正式连接（需 Session）
 
 POST   /api/v1/auth/register
