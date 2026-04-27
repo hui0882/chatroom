@@ -265,6 +265,7 @@ type PublicUser struct {
 	Bio       string    `json:"bio"`
 	Gender    string    `json:"gender"`
 	Age       *int      `json:"age,omitempty"`
+	Role      string    `json:"role"`
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -278,6 +279,7 @@ func toPublicUser(u *User) PublicUser {
 		Bio:       u.Bio,
 		Gender:    u.Gender,
 		Age:       u.Age,
+		Role:      u.Role,
 		Status:    u.Status,
 		CreatedAt: u.CreatedAt,
 	}

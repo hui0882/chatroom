@@ -2,6 +2,7 @@
 // 该接口无需登录，模拟 AI 流式输出：将收到的文本消息按 Unicode 码点倒序，
 // 然后以约 20 字/秒的速度逐字符推送回客户端，每帧携带一个字符。
 // 客户端收到 {"type":"done"} 帧表示本次输出结束。
+// 支持 ping/pong 心跳：服务端每 30s 发一次 ping，35s 内没有 pong 则断开。
 package ws
 
 import (
@@ -51,6 +52,25 @@ func StreamEchoHandler(c *gin.Context) {
 		zap.String("remote", c.Request.RemoteAddr),
 	)
 
+	// 配置读超时与 pong 处理
+	conn.SetReadLimit(maxMessageSize)
+	_ = conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(pongWait))
+	})
+
+	// ping 定时器（独立 goroutine，不阻塞读循环）
+	ticker := time.NewTicker(pingPeriod)
+	defer ticker.Stop()
+	go func() {
+		for range ticker.C {
+			_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
+		}
+	}()
+
 	interval := time.Duration(float64(time.Second) / float64(streamRate))
 
 	for {
@@ -78,7 +98,7 @@ func StreamEchoHandler(c *gin.Context) {
 		for _, r := range runes {
 			chunk := streamChunk{Type: "chunk", Content: string(r)}
 			frame, _ := json.Marshal(chunk)
-			_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := conn.WriteMessage(websocket.TextMessage, frame); err != nil {
 				logger.L().Warn("ws_stream write error", zap.Error(err))
 				goto cleanup
@@ -89,7 +109,7 @@ func StreamEchoHandler(c *gin.Context) {
 		// 发送结束帧
 		done := streamChunk{Type: "done"}
 		doneFrame, _ := json.Marshal(done)
-		_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
 		if err := conn.WriteMessage(websocket.TextMessage, doneFrame); err != nil {
 			logger.L().Warn("ws_stream write done error", zap.Error(err))
 			break

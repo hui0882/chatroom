@@ -7,6 +7,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"github.com/hui0882/chatroom/internal/friend"
+	"github.com/hui0882/chatroom/internal/message"
 	"github.com/hui0882/chatroom/internal/session"
 	"github.com/hui0882/chatroom/internal/user"
 	"github.com/hui0882/chatroom/internal/ws"
@@ -17,6 +19,8 @@ import (
 type AppContext struct {
 	Health  *HealthHandler
 	User    *user.Handler
+	Friend  *friend.Handler
+	Message *message.Handler
 	WS      *ws.Handler
 	Hub     *ws.Hub
 	Session *session.Manager
@@ -27,7 +31,7 @@ func NewAppContext(cfg *config.Config, db *sql.DB, rdb *redis.Client) *AppContex
 	// Session 管理
 	sm := session.NewManager(rdb, cfg.Session.TTL)
 
-	// WebSocket Hub（消息处理暂为空，后续聊天模块注入）
+	// WebSocket Hub（先用 nil handler，后面 dispatcher wiring 后 SetHandler）
 	hub := ws.NewHub(nil)
 	go hub.Run()
 
@@ -36,6 +40,23 @@ func NewAppContext(cfg *config.Config, db *sql.DB, rdb *redis.Client) *AppContex
 	userSvc := user.NewService(userRepo, sm, hub)
 	userHandler := user.NewHandler(userSvc)
 
+	// 好友模块
+	friendRepo := friend.NewRepository(db)
+	friendSvc := friend.NewService(friendRepo, userRepo)
+	friendHandler := friend.NewHandler(friendSvc)
+
+	// 消息模块
+	pgMsgRepo := message.NewRepository(db)
+	cacheMsgRepo := message.NewCacheRepository(pgMsgRepo, rdb)
+	unreadStore := message.NewUnreadStore(rdb)
+	msgSvc := message.NewService(cacheMsgRepo, unreadStore, friendSvc)
+	msgHandler := message.NewHandler(msgSvc)
+
+	// WS Dispatcher（消息路由核心）
+	dispatcher := message.NewDispatcher(hub, msgSvc, friendRepo)
+	hub.SetHandler(dispatcher.Handle)
+	hub.SetConnectHooks(dispatcher.OnConnect, dispatcher.OnDisconnect)
+
 	// WebSocket handler，使用 session manager 验证
 	wsValidator := ws.BuildSessionValidator(sm)
 	wsHandler := ws.NewHandler(hub, wsValidator)
@@ -43,6 +64,8 @@ func NewAppContext(cfg *config.Config, db *sql.DB, rdb *redis.Client) *AppContex
 	return &AppContext{
 		Health:  NewHealthHandler(cfg, db, rdb),
 		User:    userHandler,
+		Friend:  friendHandler,
+		Message: msgHandler,
 		WS:      wsHandler,
 		Hub:     hub,
 		Session: sm,

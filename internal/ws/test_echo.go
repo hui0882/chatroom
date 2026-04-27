@@ -4,6 +4,7 @@ package ws
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -19,7 +20,8 @@ var testUpgrader = websocket.Upgrader{
 }
 
 // TestEchoHandler 处理 /websocket_test 连接。
-// 无需鉴权，将收到的文本消息倒序后原路返回。
+// 无需鉴权，将收到的文本消息按 Unicode 码点倒序后原路返回。
+// 支持 ping/pong 心跳：服务端每 30s 发一次 ping，35s 内没有 pong 则断开。
 func TestEchoHandler(c *gin.Context) {
 	conn, err := testUpgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -31,6 +33,27 @@ func TestEchoHandler(c *gin.Context) {
 	logger.L().Info("ws_test client connected",
 		zap.String("remote", c.Request.RemoteAddr),
 	)
+
+	// 配置读超时与 pong 处理
+	conn.SetReadLimit(maxMessageSize)
+	_ = conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(pongWait))
+	})
+
+	// ping 定时器
+	ticker := time.NewTicker(pingPeriod)
+	defer ticker.Stop()
+
+	// 独立 goroutine 发送 ping，与读循环并行
+	go func() {
+		for range ticker.C {
+			_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
+		}
+	}()
 
 	for {
 		msgType, data, err := conn.ReadMessage()
@@ -48,6 +71,7 @@ func TestEchoHandler(c *gin.Context) {
 			data = []byte(reverseRunes(string(data)))
 		}
 
+		_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
 		if err := conn.WriteMessage(msgType, data); err != nil {
 			logger.L().Warn("ws_test write error", zap.Error(err))
 			break

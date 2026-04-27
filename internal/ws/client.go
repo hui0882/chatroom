@@ -15,10 +15,11 @@ import (
 const (
 	// 写超时
 	writeWait = 10 * time.Second
-	// 读超时（pong 必须在此时间内到达）
-	pongWait = 60 * time.Second
-	// ping 间隔（必须 < pongWait）
-	pingPeriod = (pongWait * 9) / 10
+	// 读超时：客户端必须在此时间内发送 pong，否则断开连接
+	// 设为 35s，给 30s ping 间隔留 5s 容差
+	pongWait = 35 * time.Second
+	// ping 发送间隔，必须 < pongWait
+	pingPeriod = 30 * time.Second
 	// 最大单帧消息字节数：64 KB
 	maxMessageSize = 64 * 1024
 )

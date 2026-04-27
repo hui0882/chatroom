@@ -53,6 +53,34 @@ func Setup(cfg *config.Config, app *server.AppContext) *gin.Engine {
 			userGroup.PUT("/password", app.User.ChangePassword)
 		}
 
+		// 用户搜索（登录后可用）
+		v1.GET("/users/search", middleware.Auth(app.Session), app.Friend.SearchUser)
+
+		// 好友模块（登录后可用）
+		friends := v1.Group("/friends", middleware.Auth(app.Session))
+		{
+			friends.GET("", app.Friend.ListFriends)
+			friends.DELETE("/:id", app.Friend.DeleteFriend)
+
+			requests := friends.Group("/requests")
+			{
+				requests.POST("", app.Friend.SendRequest)
+				requests.GET("/received", app.Friend.ListReceivedRequests)
+				requests.GET("/sent", app.Friend.ListSentRequests)
+				requests.POST("/:id/cancel", app.Friend.CancelRequest)
+				requests.POST("/:id/accept", app.Friend.AcceptRequest)
+				requests.POST("/:id/reject", app.Friend.RejectRequest)
+			}
+		}
+
+		// 消息模块（登录后可用）
+		msgs := v1.Group("/messages", middleware.Auth(app.Session))
+		{
+			msgs.GET("/unread", app.Message.GetUnread)
+			msgs.POST("/unread/:peer_uid/clear", app.Message.ClearUnread)
+			msgs.GET("/:peer_uid", app.Message.ListHistory)
+		}
+
 		// 管理员专属接口
 		admin := v1.Group("/admin",
 			middleware.Auth(app.Session),

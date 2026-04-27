@@ -18,6 +18,9 @@ type Message struct {
 // Hub 对每条入站消息调用它，业务逻辑可在此处解析 cmd 字段并分发。
 type MessageHandler func(c *Client, data []byte)
 
+// ConnectHook 在客户端成功注册后调用（可为 nil）。
+type ConnectHook func(c *Client)
+
 // Hub 集中管理所有 Client 的注册/注销及消息广播。
 // 单进程内所有 WebSocket 连接都通过同一个 Hub。
 type Hub struct {
@@ -29,7 +32,9 @@ type Hub struct {
 	Unregister chan *Client
 	Inbound    chan *Message
 
-	handler MessageHandler
+	handler      MessageHandler
+	onConnect    ConnectHook
+	onDisconnect ConnectHook
 }
 
 // NewHub 创建并返回一个新的 Hub。
@@ -41,6 +46,17 @@ func NewHub(handler MessageHandler) *Hub {
 		Inbound:    make(chan *Message, 512),
 		handler:    handler,
 	}
+}
+
+// SetHandler 动态替换消息处理函数（在 app.go 中完成 wiring 后调用）。
+func (h *Hub) SetHandler(handler MessageHandler) {
+	h.handler = handler
+}
+
+// SetConnectHooks 设置连接/断开回调（用于在线状态广播、未读数推送等）。
+func (h *Hub) SetConnectHooks(onConnect, onDisconnect ConnectHook) {
+	h.onConnect = onConnect
+	h.onDisconnect = onDisconnect
 }
 
 // Run 开始事件循环，应在独立 goroutine 中调用（程序生命周期内持续运行）。
@@ -62,6 +78,9 @@ func (h *Hub) Run() {
 				zap.Int64("uid", c.UserID),
 				zap.String("device", c.Device),
 			)
+			if h.onConnect != nil {
+				go h.onConnect(c)
+			}
 
 		case c := <-h.Unregister:
 			h.mu.Lock()
@@ -79,6 +98,9 @@ func (h *Hub) Run() {
 				zap.Int64("uid", c.UserID),
 				zap.String("device", c.Device),
 			)
+			if h.onDisconnect != nil {
+				go h.onDisconnect(c)
+			}
 
 		case msg := <-h.Inbound:
 			if h.handler != nil {
@@ -133,4 +155,35 @@ func (h *Hub) IsOnline(uid int64) bool {
 	defer h.mu.RUnlock()
 	_, ok := h.clients[uid]
 	return ok
+}
+
+// OnlineUIDs 返回当前在线的所有用户 UID 列表。
+func (h *Hub) OnlineUIDs() []int64 {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	uids := make([]int64, 0, len(h.clients))
+	for uid := range h.clients {
+		uids = append(uids, uid)
+	}
+	return uids
+}
+
+// BroadcastToUsers 向 targets 列表中的用户推送消息，excludeUID 不收（通常是发送者自己）。
+func (h *Hub) BroadcastToUsers(data []byte, excludeUID int64, targets ...int64) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, uid := range targets {
+		if uid == excludeUID {
+			continue
+		}
+		for _, c := range h.clients[uid] {
+			select {
+			case c.Send <- data:
+			default:
+				logger.L().Warn("ws broadcast queue full, dropping",
+					zap.Int64("uid", uid),
+				)
+			}
+		}
+	}
 }
