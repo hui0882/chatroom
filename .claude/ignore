@@ -1,0 +1,50 @@
+# Claude Code Ignore File
+# 这些文件在每次操作时不会被读取，以优化 token 消耗和加速开发
+
+# 设计文档（仅在需要时手动读取）
+docs/
+PLAN.md
+README.md
+
+# 前端代码（后端开发时通常不需要）
+frontend/
+
+# SQL 脚本（已执行，仅在数据库变更时需要）
+scripts/sql/
+
+# 依赖版本文件
+go.sum
+
+# 编译产物
+/tmp/chatroom
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# 测试二进制文件
+*.test
+
+# 覆盖率报告
+*.out
+*.prof
+
+# IDE 配置
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志文件
+logs/
+*.log
+
+# 临时文件
+tmp/
+temp/
